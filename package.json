@@ -30,7 +30,6 @@
     "@run-iq/core": "^0.1.0"
   },
   "dependencies": {
-    "@run-iq/core": "file:../core",
     "json-logic-js": "^2.0.2"
   },
   "devDependencies": {
