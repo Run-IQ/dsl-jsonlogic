@@ -1,6 +1,6 @@
 {
   "name": "@run-iq/dsl-jsonlogic",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "JSONLogic DSL evaluator for PPE",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -27,7 +27,7 @@
     "lint:fix": "eslint src/ tests/ --fix && prettier --write src/ tests/"
   },
   "peerDependencies": {
-    "@run-iq/core": "^0.1.0"
+    "@run-iq/core": "^0.2.0"
   },
   "dependencies": {
     "json-logic-js": "^2.0.2"
