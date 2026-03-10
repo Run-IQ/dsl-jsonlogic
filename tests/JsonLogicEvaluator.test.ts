@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { JsonLogicEvaluator } from '../src/JsonLogicEvaluator.js';
+import { VERSION } from '../src/version.js';
 
 describe('JsonLogicEvaluator', () => {
   const evaluator = new JsonLogicEvaluator();
 
   it('has correct dsl and version', () => {
     expect(evaluator.dsl).toBe('jsonlogic');
-    expect(evaluator.version).toBe('1.0.0');
+    expect(evaluator.version).toBe(VERSION);
   });
 
   it('evaluates true condition', () => {
@@ -48,6 +49,10 @@ describe('JsonLogicEvaluator', () => {
   it('handles invalid expression gracefully (returns false)', () => {
     // null expression -> falsy -> false
     expect(evaluator.evaluate(null, {})).toBe(false);
+  });
+
+  it('throws on invalid operator', () => {
+    expect(() => evaluator.evaluate({ foobar: [1] }, {})).toThrow(/evaluation failed/);
   });
 
   it('determinism: same expression x3 = same result', () => {
