@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { JsonLogicEvaluator } from '../src/JsonLogicEvaluator.js';
+import { JsonLogicEvaluator, getDepth } from '../src/JsonLogicEvaluator.js';
 import { VERSION } from '../src/version.js';
 
 describe('JsonLogicEvaluator', () => {
@@ -145,6 +145,87 @@ describe('JsonLogicEvaluator', () => {
       expect(r1).toBe(true);
       expect(r2).toBe(true);
       expect(r3).toBe(true);
+    });
+
+    it('array expression [1,2,3] → true (truthy non-empty array)', () => {
+      // json-logic-js returns the array as-is for a plain array,
+      // Boolean([1,2,3]) is true
+      const result = evaluator.evaluate([1, 2, 3], {});
+      expect(result).toBe(true);
+    });
+
+    it('deeply nested expression exceeding max depth → throws', () => {
+      // Build an expression nested 51 levels deep
+      let expr: unknown = { var: 'x' };
+      for (let i = 0; i < 51; i++) {
+        expr = { '==': [expr, true] };
+      }
+      expect(() => evaluator.evaluate(expr, { x: true })).toThrow(/exceeds maximum depth/);
+    });
+
+    it('expression at exactly depth 50 → does not throw', () => {
+      // Build an expression nested exactly 50 levels deep (depth = 50)
+      // Each { op: [child] } adds 1 level for the object + the array inside
+      // getDepth({ '==': [{ var: 'x' }, true] }) = 1 + max(1 + max(1+0, 0), 0) = 3
+      // We need to be precise: build iteratively and verify
+      let expr: unknown = true;
+      // Each wrap: { '!': [prev] } has depth = 1 + 1 + getDepth(prev)
+      // Start: true → depth 0
+      // Wrap 1: { '!': [true] } → depth 1 (obj) + 1 (arr) + 0 = 2
+      // Actually getDepth({ '!': [true] }) = 1 + getDepth([true]) = 1 + (1 + 0) = 2
+      // Wrap 2: { '!!': [{ '!': [true] }] } = 1 + 1 + 2 = 4
+      // Each wrap adds 2. So 24 wraps = depth 48, 25 wraps = depth 50
+      for (let i = 0; i < 25; i++) {
+        expr = { '!!': [expr] };
+      }
+      expect(getDepth(expr)).toBe(50);
+      // Should not throw
+      expect(() => evaluator.evaluate(expr, {})).not.toThrow();
+    });
+  });
+
+  describe('getDepth', () => {
+    it('returns 0 for null', () => {
+      expect(getDepth(null)).toBe(0);
+    });
+
+    it('returns 0 for undefined', () => {
+      expect(getDepth(undefined)).toBe(0);
+    });
+
+    it('returns 0 for primitives', () => {
+      expect(getDepth(42)).toBe(0);
+      expect(getDepth('hello')).toBe(0);
+      expect(getDepth(true)).toBe(0);
+    });
+
+    it('returns 1 for empty object', () => {
+      expect(getDepth({})).toBe(1);
+    });
+
+    it('returns 1 for empty array', () => {
+      expect(getDepth([])).toBe(1);
+    });
+
+    it('returns 1 for flat JSONLogic expression { var: "x" }', () => {
+      // { var: 'x' } → 1 (single object level with a primitive value)
+      expect(getDepth({ var: 'x' })).toBe(1);
+    });
+
+    it('computes depth for nested structures', () => {
+      // { '>=': [{ var: 'x' }, 5] }
+      // object(1) → array(2) → max(object(3)→string(3), primitive(2)) = 3
+      expect(getDepth({ '>=': [{ var: 'x' }, 5] })).toBe(3);
+    });
+
+    it('computes depth for deeply nested structures', () => {
+      // Build 10 levels of wrapping
+      let expr: unknown = true;
+      for (let i = 0; i < 10; i++) {
+        expr = { '!!': [expr] };
+      }
+      // Each wrap adds 2 (1 for obj + 1 for array), starting from 0
+      expect(getDepth(expr)).toBe(20);
     });
   });
 });

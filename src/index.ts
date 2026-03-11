@@ -1,1 +1,1 @@
-export { JsonLogicEvaluator } from './JsonLogicEvaluator.js';
+export { JsonLogicEvaluator, getDepth } from './JsonLogicEvaluator.js';
