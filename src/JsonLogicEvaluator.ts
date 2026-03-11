@@ -5,7 +5,7 @@
 import jsonLogic from 'json-logic-js';
 jsonLogic.rm_operation('log');
 
-import type { DSLEvaluator } from '@run-iq/core';
+import type { DSLEvaluator, DSLSyntaxDoc } from '@run-iq/core';
 import { VERSION } from './version.js';
 
 const MAX_EXPRESSION_DEPTH = 50;
@@ -42,6 +42,42 @@ export function getDepth(expr: unknown): number {
 export class JsonLogicEvaluator implements DSLEvaluator {
   readonly dsl = 'jsonlogic' as const;
   readonly version = VERSION;
+
+  describeSyntax(): DSLSyntaxDoc {
+    return {
+      description:
+        'JSONLogic is a JSON-based rules engine. Conditions are JSON objects where keys are operators and values are arguments.',
+      conditionFormat: '{ "dsl": "jsonlogic", "value": <expression> }',
+      operators: [
+        { name: '==', description: 'Equality', syntax: '{ "==": [a, b] }' },
+        { name: '!=', description: 'Inequality', syntax: '{ "!=": [a, b] }' },
+        { name: '>', description: 'Greater than', syntax: '{ ">": [a, b] }' },
+        { name: '>=', description: 'Greater than or equal', syntax: '{ ">=": [a, b] }' },
+        { name: '<', description: 'Less than', syntax: '{ "<": [a, b] }' },
+        { name: '<=', description: 'Less than or equal', syntax: '{ "<=": [a, b] }' },
+        { name: 'and', description: 'Logical AND', syntax: '{ "and": [cond1, cond2, ...] }' },
+        { name: 'or', description: 'Logical OR', syntax: '{ "or": [cond1, cond2, ...] }' },
+        { name: '!', description: 'Logical NOT', syntax: '{ "!": [cond] }' },
+        { name: 'var', description: 'Access input variable (supports dot-notation)', syntax: '{ "var": "fieldName" }' },
+        { name: 'in', description: 'Check membership in array', syntax: '{ "in": [value, array] }' },
+        { name: 'if', description: 'Conditional (ternary)', syntax: '{ "if": [cond, then, else] }' },
+      ],
+      examples: [
+        {
+          description: 'Revenue >= 1,000,000',
+          expression: { '>=': [{ var: 'revenue' }, 1000000] },
+        },
+        {
+          description: 'Income > 500,000 AND country is TG',
+          expression: { and: [{ '>': [{ var: 'income' }, 500000] }, { '==': [{ var: 'country' }, 'TG'] }] },
+        },
+        {
+          description: 'Business type is in allowed list',
+          expression: { in: [{ var: 'businessType' }, ['enterprise', 'sarl', 'sa']] },
+        },
+      ],
+    };
+  }
 
   evaluate(expression: unknown, context: Record<string, unknown>): boolean {
     const depth = getDepth(expression);
