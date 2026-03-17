@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { JsonLogicEvaluator, getDepth } from '../src/JsonLogicEvaluator.js';
+import {
+  JsonLogicEvaluator as IndexJsonLogicEvaluator,
+  getDepth as indexGetDepth,
+} from '../src/index.js';
 import { VERSION } from '../src/version.js';
 
 describe('JsonLogicEvaluator', () => {
@@ -227,5 +231,142 @@ describe('JsonLogicEvaluator', () => {
       // Each wrap adds 2 (1 for obj + 1 for array), starting from 0
       expect(getDepth(expr)).toBe(20);
     });
+  });
+
+  describe('describeSyntax', () => {
+    const evaluator = new JsonLogicEvaluator();
+    const syntax = evaluator.describeSyntax();
+
+    it('returns a non-null object', () => {
+      expect(syntax).toBeDefined();
+      expect(typeof syntax).toBe('object');
+    });
+
+    it('has a non-empty description string', () => {
+      expect(typeof syntax.description).toBe('string');
+      expect(syntax.description.length).toBeGreaterThan(0);
+      expect(syntax.description).toContain('JSONLogic');
+    });
+
+    it('has a conditionFormat string describing the expected shape', () => {
+      expect(typeof syntax.conditionFormat).toBe('string');
+      expect(syntax.conditionFormat).toContain('jsonlogic');
+      expect(syntax.conditionFormat).toContain('expression');
+    });
+
+    it('has a non-empty operators array', () => {
+      expect(Array.isArray(syntax.operators)).toBe(true);
+      expect(syntax.operators.length).toBeGreaterThan(0);
+    });
+
+    it('each operator has name, description, and syntax fields', () => {
+      for (const op of syntax.operators) {
+        expect(typeof op.name).toBe('string');
+        expect(op.name.length).toBeGreaterThan(0);
+        expect(typeof op.description).toBe('string');
+        expect(op.description.length).toBeGreaterThan(0);
+        expect(typeof op.syntax).toBe('string');
+        expect(op.syntax.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('includes all expected operators', () => {
+      const operatorNames = syntax.operators.map((op) => op.name);
+      const expectedOperators = [
+        '==',
+        '!=',
+        '>',
+        '>=',
+        '<',
+        '<=',
+        'and',
+        'or',
+        '!',
+        'var',
+        'in',
+        'if',
+      ];
+      for (const expected of expectedOperators) {
+        expect(operatorNames).toContain(expected);
+      }
+    });
+
+    it('has exactly 12 operators', () => {
+      expect(syntax.operators.length).toBe(12);
+    });
+
+    it('has a non-empty examples array', () => {
+      expect(Array.isArray(syntax.examples)).toBe(true);
+      expect(syntax.examples.length).toBeGreaterThan(0);
+    });
+
+    it('each example has a description and an expression', () => {
+      for (const example of syntax.examples) {
+        expect(typeof example.description).toBe('string');
+        expect(example.description.length).toBeGreaterThan(0);
+        expect(example.expression).toBeDefined();
+      }
+    });
+
+    it('has exactly 3 examples', () => {
+      expect(syntax.examples.length).toBe(3);
+    });
+
+    it('examples contain realistic fiscal scenarios', () => {
+      const descriptions = syntax.examples.map((ex) => ex.description);
+      expect(descriptions.some((d) => d.includes('Revenue'))).toBe(true);
+      expect(descriptions.some((d) => d.includes('Income'))).toBe(true);
+      expect(descriptions.some((d) => d.includes('Business type'))).toBe(true);
+    });
+
+    it('example expressions are valid JSONLogic that can be evaluated', () => {
+      // The first example: revenue >= 1,000,000
+      const result1 = evaluator.evaluate(syntax.examples[0]!.expression, { revenue: 2000000 });
+      expect(result1).toBe(true);
+
+      // The second example: income > 500,000 AND country is TG
+      const result2 = evaluator.evaluate(syntax.examples[1]!.expression, {
+        income: 600000,
+        country: 'TG',
+      });
+      expect(result2).toBe(true);
+
+      // The third example: businessType in allowed list
+      const result3 = evaluator.evaluate(syntax.examples[2]!.expression, {
+        businessType: 'sarl',
+      });
+      expect(result3).toBe(true);
+    });
+
+    it('returns the same structure on repeated calls (determinism)', () => {
+      const syntax1 = evaluator.describeSyntax();
+      const syntax2 = evaluator.describeSyntax();
+      const syntax3 = evaluator.describeSyntax();
+      expect(syntax1).toEqual(syntax2);
+      expect(syntax2).toEqual(syntax3);
+    });
+  });
+});
+
+describe('barrel export (index.ts)', () => {
+  it('exports JsonLogicEvaluator from index', () => {
+    expect(IndexJsonLogicEvaluator).toBe(JsonLogicEvaluator);
+  });
+
+  it('exports getDepth from index', () => {
+    expect(indexGetDepth).toBe(getDepth);
+  });
+
+  it('can instantiate JsonLogicEvaluator from index export', () => {
+    const evaluator = new IndexJsonLogicEvaluator();
+    expect(evaluator.dsl).toBe('jsonlogic');
+    expect(evaluator.version).toBe(VERSION);
+    expect(evaluator.evaluate({ '==': [1, 1] }, {})).toBe(true);
+  });
+
+  it('getDepth from index works correctly', () => {
+    expect(indexGetDepth(null)).toBe(0);
+    expect(indexGetDepth({ var: 'x' })).toBe(1);
+    expect(indexGetDepth({ '>=': [{ var: 'x' }, 5] })).toBe(3);
   });
 });

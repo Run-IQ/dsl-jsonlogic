@@ -58,9 +58,21 @@ export class JsonLogicEvaluator implements DSLEvaluator {
         { name: 'and', description: 'Logical AND', syntax: '{ "and": [cond1, cond2, ...] }' },
         { name: 'or', description: 'Logical OR', syntax: '{ "or": [cond1, cond2, ...] }' },
         { name: '!', description: 'Logical NOT', syntax: '{ "!": [cond] }' },
-        { name: 'var', description: 'Access input variable (supports dot-notation)', syntax: '{ "var": "fieldName" }' },
-        { name: 'in', description: 'Check membership in array', syntax: '{ "in": [value, array] }' },
-        { name: 'if', description: 'Conditional (ternary)', syntax: '{ "if": [cond, then, else] }' },
+        {
+          name: 'var',
+          description: 'Access input variable (supports dot-notation)',
+          syntax: '{ "var": "fieldName" }',
+        },
+        {
+          name: 'in',
+          description: 'Check membership in array',
+          syntax: '{ "in": [value, array] }',
+        },
+        {
+          name: 'if',
+          description: 'Conditional (ternary)',
+          syntax: '{ "if": [cond, then, else] }',
+        },
       ],
       examples: [
         {
@@ -69,7 +81,9 @@ export class JsonLogicEvaluator implements DSLEvaluator {
         },
         {
           description: 'Income > 500,000 AND country is TG',
-          expression: { and: [{ '>': [{ var: 'income' }, 500000] }, { '==': [{ var: 'country' }, 'TG'] }] },
+          expression: {
+            and: [{ '>': [{ var: 'income' }, 500000] }, { '==': [{ var: 'country' }, 'TG'] }],
+          },
         },
         {
           description: 'Business type is in allowed list',
