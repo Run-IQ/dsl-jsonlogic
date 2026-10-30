@@ -1,6 +1,6 @@
 {
   "name": "@run-iq/dsl-jsonlogic",
-  "version": "0.1.4",
+  "version": "0.2.0-next.0",
   "description": "JSONLogic DSL evaluator for PPE",
   "type": "module",
   "main": "./dist/index.cjs",
