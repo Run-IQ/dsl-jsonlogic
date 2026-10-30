@@ -1,61 +1,75 @@
 # @run-iq/dsl-jsonlogic
 
-[JSONLogic](https://jsonlogic.com) DSL evaluator for the PPE engine.
+Lets [Run-IQ](https://github.com/Run-IQ/core) rules use [JSONLogic](https://jsonlogic.com) expressions as conditions. A rule only applies when its condition is true for the input data.
+
+[`@run-iq/core`](https://github.com/Run-IQ/core) does not evaluate conditions itself. It hands each `condition` to the evaluator registered for its `dsl` name, and this package is the evaluator for `'jsonlogic'`.
 
 ## Install
 
 ```bash
-npm install @run-iq/dsl-jsonlogic
+npm install @run-iq/dsl-jsonlogic @run-iq/core
 ```
 
-**Peer dependency:** `@run-iq/core >= 0.1.0`
+`@run-iq/core` is a peer dependency. Requires Node.js 20 or later.
 
-## Usage
+## Example
 
-```typescript
-import { PPEEngine } from '@run-iq/core';
+```ts
+import { PPEEngine, computeRuleChecksum } from '@run-iq/core';
 import { JsonLogicEvaluator } from '@run-iq/dsl-jsonlogic';
 
+const fixed = {
+  name: 'FIXED',
+  version: '1.0.0',
+  validateParams: (p) => ({ valid: typeof p?.amount === 'number' }),
+  calculate: (_input, _rule, p) => p.amount,
+};
+
 const engine = new PPEEngine({
-  plugins: [myPlugin],
+  plugins: [{ name: 'demo', version: '1.0.0', onInit: (ctx) => ctx.modelRegistry.register(fixed) }],
   dsls: [new JsonLogicEvaluator()],
-  strict: true,
 });
-```
 
-Rules can then use `jsonlogic` conditions:
-
-```typescript
-const rule = {
-  id: 'tax-high-income',
-  model: 'PROGRESSIVE_BRACKET',
+const draft = {
+  id: 'gold-bonus',
+  version: 1,
+  model: 'FIXED',
+  params: { amount: 5 },
   condition: {
     dsl: 'jsonlogic',
-    value: { '>': [{ var: 'grossSalary' }, 5_000_000] },
+    value: { and: [{ '>=': [{ var: 'orderTotal' }, 100] }, { '==': [{ var: 'customer.tier' }, 'gold'] }] },
   },
-  // ...
+  priority: 1,
+  effectiveFrom: new Date('2025-01-01'),
+  effectiveUntil: null,
+  tags: [],
 };
+const rule = { ...draft, checksum: computeRuleChecksum(draft) };
+
+const meta = { tenantId: 'acme', effectiveDate: new Date('2025-06-01') };
+
+const gold = await engine.evaluate([rule], { requestId: 'a', data: { orderTotal: 120, customer: { tier: 'gold' } }, meta });
+gold.value; // 5
+
+const basic = await engine.evaluate([rule], { requestId: 'b', data: { orderTotal: 120, customer: { tier: 'basic' } }, meta });
+basic.value;                   // 0
+basic.skippedRules[0].reason;  // 'CONDITION_FALSE'
 ```
 
-## API
+`var` reads from the evaluation's `data`, with dot notation for nested fields. All standard JSONLogic operators are available (`==`, `>`, `and`, `or`, `!`, `in`, `if`, arithmetic, ...), except `log`, which is disabled.
 
-### `JsonLogicEvaluator`
+## Behaviour
 
-Implements `DSLEvaluator` from `@run-iq/core`.
+- `evaluate(expression, data)` returns a boolean. The result of the expression is coerced with `Boolean()`.
+- Expressions nested more than 50 levels deep are rejected.
+- If an expression throws, the engine skips the rule with reason `DSL_ERROR`.
+- `describeSyntax()` returns the supported operators and examples, used by tooling and LLM prompts.
 
-| Property | Value |
-|---|---|
-| `dsl` | `"jsonlogic"` |
-| `version` | `"1.0.0"` |
+The evaluator can also be used on its own:
 
-**`evaluate(expression, context)`** — evaluates a JSONLogic expression against a data context and returns a boolean.
-
-Timeout and sandboxing are handled by the core engine's `PluginSandbox` — this evaluator stays pure.
-
-## Requirements
-
-- Node.js >= 20
-- `@run-iq/core` >= 0.1.0
+```ts
+new JsonLogicEvaluator().evaluate({ in: [{ var: 'country' }, ['FR', 'BE']] }, { country: 'FR' }); // true
+```
 
 ## License
 
