@@ -55,6 +55,9 @@
   },
   "author": "Abdou-Raouf ATARMLA",
   "license": "MIT",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "engines": {
     "node": ">=20.0.0"
   }
