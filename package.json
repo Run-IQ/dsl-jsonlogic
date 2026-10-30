@@ -29,7 +29,7 @@
     "lint:fix": "eslint src/ tests/ --fix && prettier --write src/ tests/"
   },
   "peerDependencies": {
-    "@run-iq/core": "^0.2.8"
+    "@run-iq/core": "^1.0.0-next.0"
   },
   "dependencies": {
     "json-logic-js": "^2.0.2"
