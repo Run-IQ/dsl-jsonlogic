@@ -7,10 +7,10 @@ Lets [Run-IQ](https://github.com/Run-IQ/core) rules use [JSONLogic](https://json
 ## Install
 
 ```bash
-npm install @run-iq/dsl-jsonlogic @run-iq/core
+npm install @run-iq/dsl-jsonlogic@next @run-iq/core@next
 ```
 
-`@run-iq/core` is a peer dependency. Requires Node.js 20 or later.
+`@run-iq/core` is a peer dependency. Install the whole `@run-iq` set from the `next` tag, the line built on [`@run-iq/spec`](https://github.com/Run-IQ/spec). Requires Node.js 20 or later.
 
 ## Example
 
