@@ -7,8 +7,17 @@ jsonLogic.rm_operation('log');
 
 import type { DSLEvaluator, DSLSyntaxDoc } from '@run-iq/core';
 import { VERSION } from './version.js';
-
-const MAX_EXPRESSION_DEPTH = 50;
+import {
+  copyJson,
+  prepareExpression,
+  prepareContext,
+  requiredVariables,
+  JsonLogicError,
+  MAX_EXPRESSION_DEPTH,
+} from './expression.js';
+import type { JsonValue } from './expression.js';
+import { truthResult } from './truth.js';
+import type { TruthResult } from './truth.js';
 
 /**
  * Recursively compute the depth of a JSONLogic expression tree.
@@ -42,6 +51,27 @@ export function getDepth(expr: unknown): number {
 export class JsonLogicEvaluator implements DSLEvaluator {
   readonly dsl = 'jsonlogic' as const;
   readonly version = VERSION;
+  readonly capabilities = Object.freeze({ exactDecimals: false, threeValued: true });
+
+  listVariables(expression: unknown): string[] {
+    return requiredVariables(prepareExpression(expression));
+  }
+
+  compute(expression: unknown, context: Record<string, unknown>): JsonValue {
+    const checked = prepareExpression(expression);
+    const data = prepareContext(context);
+    let result: unknown;
+    try {
+      result = jsonLogic.apply(checked, data);
+    } catch {
+      throw new JsonLogicError('EVALUATION_FAILED', 'JSONLogic computation failed');
+    }
+    return copyJson(result, 'NON_JSON_RESULT');
+  }
+
+  evaluateTruth(expression: unknown, context: Record<string, unknown>): TruthResult {
+    return truthResult(prepareExpression(expression), prepareContext(context));
+  }
 
   describeSyntax(): DSLSyntaxDoc {
     return {

@@ -99,10 +99,10 @@ what you pushed and what you expect from the machine session.
 Use Node 20 for the complete local CI replay, and Node 20 and 24 in CI:
 
 ```sh
-npm ci
+# First perform the branch build/install/link setup from README (next.1 is unpublished).
 npm run typecheck
 npm run lint
-npm exec --no -- prettier --check CLAUDE.md .github/workflows/ci.yml
+npm exec --no -- prettier --check CLAUDE.md README.md .github/workflows/ci.yml
 npm test
 npm run build
 ```
@@ -194,13 +194,23 @@ Lane A finishes 9L (core#5) through audit OK and merge, then only the small core
 follow-up to spec#4 (`job-core-followup-9k5`) so core CI stays green. Lane B finishes
 9K5 (spec#4), merging only when the machine session says so after 9L. Both then take
 no new job, keep their watch armed and wait for a machine comment to resume.
+This pause was lifted on 15 November 2026 by the resume decision below.
 This decision names lanes A and B. Lane C's later job 1 is explicitly assigned on
 15 November 2026.
 
 The [later audit pause](https://github.com/Run-IQ/.github/issues/1#issuecomment-6595478710)
-says the machine session pauses audits until the owner resumes them. Current
-fixes may be finished and pushed with a status post, then wait; no merge precedes
-audit. The lane C assignment does not substitute for an audit OK.
+paused machine audits until the owner resumed them. This audit pause was lifted
+on 15 November 2026 by the resume decision below. An explicit audit OK is still
+required before every merge.
+
+### DECISION: loop resumed and lane C joins, 15 November 2026
+
+[Machine session: DECISION (all lanes)](https://github.com/Run-IQ/.github/issues/1#issuecomment-6888518491).
+The owner resumed the loop. ChatGPT/Codex joins as lane C for standalone Task 12
+in `dsl-jsonlogic`. Audits resume and the pauses of 3 November are lifted. The
+remaining merge order still holds: 9L, then spec#4, then lane A's core follow-up;
+then the machine session posts the next jobs. Lanes A and B reread their repo's
+`CLAUDE.md` and their PR if restarted, and receive their audits on their PRs.
 
 ## 6. Future decisions
 
