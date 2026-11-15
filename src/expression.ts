@@ -1,3 +1,4 @@
+import { comparePointers, formatPointer } from '@run-iq/spec/canonical';
 /** JSON values accepted and returned by the standalone evaluator. */
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -6,7 +7,10 @@ export type JsonLogicErrorCode =
   | 'INVALID_CONTEXT'
   | 'NON_JSON_RESULT'
   | 'INVALID_BOUNDS'
-  | 'EVALUATION_FAILED';
+  | 'EVALUATION_FAILED'
+  | 'INCOMPARABLE'
+  | 'MISSING_FACT'
+  | 'LIMIT_EXCEEDED';
 export class JsonLogicError extends Error {
   readonly name = 'JsonLogicError';
   constructor(
@@ -17,22 +21,44 @@ export class JsonLogicError extends Error {
   }
 }
 export const MAX_EXPRESSION_DEPTH = 50;
+export const MAX_EXPRESSION_NODES = 100_000;
+export const MAX_EVALUATION_STEPS = 100_000;
+export const MAX_VALUE_NODES = 100_000;
 
 /** Snapshot data properties only. Never execute accessors or keep caller-owned objects. */
 export function copyJson(
   input: unknown,
   code: JsonLogicErrorCode,
   maxDepth = MAX_EXPRESSION_DEPTH,
+  maxNodes = MAX_VALUE_NODES,
+  spend?: (amount: number) => void,
 ): JsonValue {
+  let remaining = maxNodes;
   let failure: JsonLogicError | undefined;
   function fail(message: string): never {
     failure = new JsonLogicError(code, message);
     throw failure;
   }
+  function failBudget(): never {
+    failure = new JsonLogicError('LIMIT_EXCEEDED', 'Maximum evaluation steps exceeded');
+    throw failure;
+  }
   const active = new WeakSet<object>();
-  const snapshots = new WeakMap<object, { value: JsonValue; height: number }>();
+  const snapshots = new WeakMap<object, { value: JsonValue; height: number; size: number }>();
+  const sizes = new WeakMap<object, number>();
   const heights = new WeakMap<object, number>();
   const walk = (value: unknown, depth: number, path: string): JsonValue => {
+    if (spend) {
+      try {
+        spend(typeof value === 'string' ? 1 + value.length : 1);
+      } catch {
+        failBudget();
+      }
+    }
+    if (--remaining < 0) {
+      failure = new JsonLogicError('LIMIT_EXCEEDED', `JSON exceeds maximum nodes of ${maxNodes}`);
+      throw failure;
+    }
     if (value === null || typeof value === 'boolean' || typeof value === 'string') return value;
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     if (typeof value !== 'object' || value === null) fail(`${path || '/'} is not JSON`);
@@ -42,6 +68,18 @@ export function copyJson(
     if (cached) {
       if (depth + cached.height > maxDepth)
         fail(`JSON exceeds maximum depth of ${maxDepth} at ${path || '/'}`);
+      if (spend) {
+        try {
+          spend(cached.size - 1);
+        } catch {
+          failBudget();
+        }
+      }
+      remaining -= cached.size - 1;
+      if (remaining < 0) {
+        failure = new JsonLogicError('LIMIT_EXCEEDED', `JSON exceeds maximum nodes of ${maxNodes}`);
+        throw failure;
+      }
       return cached.value;
     }
     const array = Array.isArray(value);
@@ -60,6 +98,7 @@ export function copyJson(
       fail(`Invalid array at ${path || '/'}`);
     let entries = 0;
     let height = 1;
+    let size = 1;
     for (const key of keys) {
       if (array && key === 'length') continue;
       if (typeof key !== 'string') fail(`Symbol key at ${path || '/'}`);
@@ -72,6 +111,7 @@ export function copyJson(
       const child = walk(descriptor.value, depth + 1, at);
       if (child !== null && typeof child === 'object')
         height = Math.max(height, 1 + heights.get(child)!);
+      size += child !== null && typeof child === 'object' ? sizes.get(child)! : 1;
       Object.defineProperty(result, key, {
         value: child,
         enumerable: true,
@@ -83,7 +123,8 @@ export function copyJson(
     if (array && entries !== length) fail(`Sparse array at ${path || '/'}`);
     active.delete(value);
     heights.set(result, height);
-    snapshots.set(value, { value: result, height });
+    sizes.set(result, size);
+    snapshots.set(value, { value: result, height, size });
     return result;
   };
   try {
@@ -95,8 +136,16 @@ export function copyJson(
 }
 export const escapeSegment = (segment: string): string =>
   segment.replace(/~/g, '~0').replace(/\//g, '~1');
-export const pointerOf = (path: string): string =>
-  '/' + path.split('.').map(escapeSegment).join('/');
+export function pointerOf(path: string): string {
+  const segments = path.split('.');
+  if (segments.includes('-'))
+    throw new JsonLogicError('INVALID_EXPRESSION', 'A read cannot contain a - segment');
+  try {
+    return formatPointer(segments);
+  } catch {
+    throw new JsonLogicError('INVALID_EXPRESSION', 'Invalid read pointer');
+  }
+}
 export function operation(expression: JsonValue): { op: string; args: JsonValue[] } | undefined {
   if (expression === null || typeof expression !== 'object' || Array.isArray(expression))
     return undefined;
@@ -113,6 +162,7 @@ const arities: Record<string, readonly [number, number]> = {
   '!=': [2, 2],
   '===': [2, 2],
   '!==': [2, 2],
+  between: [3, 3],
   '>': [2, 2],
   '>=': [2, 2],
   '<': [2, 3],
@@ -122,8 +172,8 @@ const arities: Record<string, readonly [number, number]> = {
   in: [2, 2],
   if: [2, Infinity],
   '?:': [2, Infinity],
-  and: [0, Infinity],
-  or: [0, Infinity],
+  and: [1, Infinity],
+  or: [1, Infinity],
   '+': [0, Infinity],
   '*': [1, Infinity],
   '-': [1, 2],
@@ -146,7 +196,10 @@ const arities: Record<string, readonly [number, number]> = {
 export function varPath(args: JsonValue[]): string {
   if (!args.length) return '';
   const path = args[0];
-  if (typeof path === 'string') return path;
+  if (typeof path === 'string') {
+    if (path !== '') pointerOf(path);
+    return path;
+  }
   if (typeof path === 'number' && Number.isSafeInteger(path) && path >= 0) return String(path);
   throw new JsonLogicError(
     'INVALID_EXPRESSION',
@@ -154,7 +207,12 @@ export function varPath(args: JsonValue[]): string {
   );
 }
 export function prepareExpression(input: unknown): JsonValue {
-  const expression = copyJson(input, 'INVALID_EXPRESSION');
+  const expression = copyJson(
+    input,
+    'INVALID_EXPRESSION',
+    MAX_EXPRESSION_DEPTH,
+    MAX_EXPRESSION_NODES,
+  );
   const visit = (value: JsonValue): void => {
     if (Array.isArray(value)) {
       value.forEach(visit);
@@ -192,7 +250,7 @@ export function requiredVariables(expression: JsonValue): string[] {
     } else args.forEach((arg, i) => visit(arg, scoped || (SCOPED.has(op) && i === 1)));
   };
   visit(expression, false);
-  return [...found].sort();
+  return [...found].sort(comparePointers);
 }
 export function prepareContext(input: unknown): JsonValue {
   const context = copyJson(input, 'INVALID_CONTEXT');

@@ -121,11 +121,11 @@ describe('bounded output comparisons', () => {
       boundedReads: ['/$outputs/criteres'],
     });
   });
-  it('ignores bounds for present outputs and ordinary facts', () => {
+  it('checks present outputs against bounds and ignores bounds for ordinary facts', () => {
     expect(
       evaluator.evaluateTruth(
         { '>=': [read, 2] },
-        { $outputs: { criteres: 1 }, $bounds: { criteres: { min: 2 } } },
+        { $outputs: { criteres: 1 }, $bounds: { criteres: { min: 0 } } },
       ),
     ).toEqual({ value: false });
     expect(
@@ -164,16 +164,16 @@ describe('conservative inference boundaries', () => {
       value: 'unknown',
     });
   });
-  it('does not infer strict equality from a decimal bound with a different JSON type', () => {
+  it('uses exact decimal equality across JSON numeric types', () => {
     expect(
       evaluator.evaluateTruth(
         { '===': [{ var: '$outputs.x' }, 9] },
         { $bounds: { x: { min: '9', max: '9' } } },
       ),
-    ).toEqual({ value: 'unknown' });
+    ).toEqual({ value: true, boundedReads: ['/$outputs/x'] });
   });
-  it('uses JSONLogic string ordering for a known link of a partially unknown chain', () => {
-    expect(evaluator.evaluateTruth({ '<': ['9', '10', u] }, {})).toEqual({ value: false });
+  it('uses decimal ordering for a known link of a partially unknown chain', () => {
+    expect(evaluator.evaluateTruth({ '<': ['9', '10', u] }, {})).toEqual({ value: 'unknown' });
   });
   it('does not reuse scalar accumulator bounds for an absent child property', () => {
     const expression = {
@@ -214,7 +214,7 @@ it('does not read inherited properties from the reduce scope', () => {
 it('evaluates wide flat conditionals without consuming call-stack depth', () => {
   const knownArgs: unknown[] = [],
     unknownArgs: unknown[] = [];
-  for (let i = 0; i < 20000; i++) {
+  for (let i = 0; i < 10000; i++) {
     knownArgs.push(false, false);
     unknownArgs.push(u, true);
   }

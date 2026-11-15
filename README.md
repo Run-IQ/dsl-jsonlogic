@@ -70,7 +70,7 @@ basic.skippedRules[0].reason; // 'CONDITION_FALSE'
 
 ## Behaviour
 
-- `evaluate(expression, data)` returns a boolean. The result of the expression is coerced with `Boolean()`.
+- `evaluate(expression, data)` returns a boolean; unresolved truth becomes false. See the API below for comparisons and missing facts.
 - Expressions nested more than 50 levels deep are rejected.
 - If an expression throws, the engine skips the rule with reason `DSL_ERROR`.
 - `describeSyntax()` returns the supported operators and examples, used by tooling and LLM prompts.
@@ -81,103 +81,99 @@ The evaluator can also be used on its own:
 new JsonLogicEvaluator().evaluate({ in: [{ var: 'country' }, ['FR', 'BE']] }, { country: 'FR' }); // true
 ```
 
-## License
-
-MIT
-
-## Phase 2 standalone API
-
-Task 12 adds three methods without changing the existing two-valued `evaluate`:
+## API
 
 ```ts
 const evaluator = new JsonLogicEvaluator();
 evaluator.listVariables({ '>=': [{ var: 'revenue.total' }, 100] }); // ['/revenue/total']
 evaluator.compute({ cat: ['Hello ', { var: 'name' }] }, { name: 'Ada' }); // 'Hello Ada'
 evaluator.evaluateTruth({ and: [true, { var: 'missing' }] }, {}); // { value: 'unknown' }
-evaluator.capabilities; // { exactDecimals: false, threeValued: true }
 ```
 
-`listVariables` returns sorted, unique RFC 6901 context pointers. It escapes `~`
-and `/` in each dot-separated segment. A `var` with a default, or an empty `var`,
-is not required. A default expression's own reads are still discovered. Reads in
-an iterator's predicate/body (`some`, `all`, `none`, `map`, `filter`, `reduce`) are
-relative to its element or accumulator and are omitted. The collection and a
-reduce's initial value still contribute outer reads. Nested scopes stay scoped.
+`listVariables` returns unique RFC 6901 context pointers, ordered by spec's
+`comparePointers` on decoded segments. Dot-separated paths escape `~` and `/`.
+A `-` segment or lone surrogate is refused. A defaulted or empty `var` is not
+required, but a default expression's own reads remain. Reads inside `some`, `all`,
+`none`, `map`, `filter` and `reduce` bodies belong to the current element or
+accumulator and are omitted. Collections and reduce initial values contribute
+outer reads, including in nested iterators.
 
-`compute` returns a detached JSON value. The new methods validate the complete
-expression before executing it: unknown operators (including disabled `log`),
-malformed arguments, non-JSON values, cycles and expression depth over 50 are
-refused with `JsonLogicError` and `code: 'INVALID_EXPRESSION'`. JSONLogic literal
-objects (zero or multiple keys) remain data; a single-key object is an operation.
-`var` accepts a string or non-negative safe integer path, an empty argument list,
-or `[path, default]`. Contexts must be JSON objects. Context and result trees also
-have a maximum depth of 50. Accessors, symbols, non-enumerable data, array holes
-and non-plain objects are refused. Inspection faults become named errors without
-inspecting the thrown value. The validated copies are the ones used; shared objects are snapshotted once,
-with depth checked at every reference, and input objects are never passed to the
-interpreter.
+`compute` returns detached JSON. A read without a default of an absent own data
+property throws `MISSING_FACT`, naming the pointer or iterator index. Inherited
+properties are absent. Explicit `null` remains a known value. Defaults apply to
+absent facts, never to pending outputs or present unresolved values.
 
-Other error codes are `INVALID_CONTEXT`, `NON_JSON_RESULT`, `INVALID_BOUNDS` and
-`EVALUATION_FAILED`. In particular `NaN`, infinities and `undefined` results are
-refused, including non-JSON members inside a result. Ordinary numeric computation
-retains JSONLogic's binary floating-point semantics; `exactDecimals` is `false`.
+`evaluateTruth` returns `{ value: true | false | 'unknown', boundedReads?: string[] }`.
+An absent fact without a default is unknown. `and`, `or` and `!` use Kleene logic;
+known logical operands retain their values inside enclosing expressions. A known
+`if` evaluates only its chosen branch. An unknown condition yields a known value
+only for identical JSON branches; numeric alternatives may contribute conservative
+intervals. Unknown collections and predicates remain unknown unless a known
+predicate decides the quantifier. `missing` and `missing_some` distinguish absence
+from pending values. Empty `and` and `or` are refused by every evaluation method.
 
-`evaluateTruth` uses an internal unknown distinct from the JSON string
-`'unknown'`. An absent variable without a default is unknown; an explicit `null`
-is a known value. `and`, `or` and `!` obey Kleene logic. Known logical operands keep their
-JSONLogic values inside enclosing expressions. A certain boolean classification
-does not invent the value of an unresolved operand. `missing` and `missing_some`
-evaluate dynamic arguments through this same logic and distinguish absence from
-a present but unresolved intermediate value. Known `if` conditions
-execute only the chosen branch. For an unknown condition, identical JSON branch
-values become known; differing branches stay unknown. Numeric alternatives can
-supply conservative intervals to a sum, so two true criteria and one unknown can
-still establish a threshold of two. Unknown collections or predicates propagate
-unknown through membership, quantifiers and transformations unless a known
-predicate already decides a quantifier. Empty-list truth follows JSONLogic in
-this new method; the legacy `evaluate` still uses its original `Boolean()`.
+All three methods use the same comparisons. Ordering (`<`, `<=`, `>`, `>=`,
+`between`) accepts only numbers and canonical decimal strings; other pairs throw
+`INCOMPARABLE`. `between` takes `[minimum, value, maximum]` with inclusive endpoints.
+Two numeric values compare with spec's `compareOutputValues`; numbers use their
+shortest decimal spelling, expanded out of exponent notation when mixed with a
+decimal string, matching spec's decimal conversion. No decimal string is converted
+to a binary number for comparison. Equality (`==`, `!=`, `===`, `!==`) compares two
+numbers/decimals by exact decimal value; all other pairs use strict equality
+without coercion.
 
-An absent `$outputs.x` may have `{ min, max }` in `$bounds.x` (either endpoint may
-be omitted). Finite number endpoints or canonical decimal strings are accepted;
-invalid, empty or reversed bounds are refused when read. The six comparisons
-`<`, `<=`, `>`, `>=`, `==`, `!=` decide only if the whole interval gives the same
-answer. Decimal ordering uses spec's `compareOutputValues`, never text ordering
-or conversion to binary numbers. Strict equality on unknown values stays unknown.
-Bounds are not substituted for a present output or a variable's explicit default,
-and bounds on an output do not constrain a nested field of that output.
+An output without a value and with an entry in `$bounds` is pending. Its default
+is not used, and `missing` is unknown. `$bounds.x` holds `{ min, max }`, with at
+least one endpoint: finite numbers or canonical decimal strings. A comparison
+is decided only when every admissible value gives the same answer. `$bounds` and
+`$outputs` must be objects; every bound is checked up front, including unused
+entries, and a present output outside its bounds is refused. Bounds apply only
+to the named root output, never to iterator reads or a nested field.
 
 ```ts
 evaluator.evaluateTruth(
-  { '>=': [{ var: '$outputs.criteres' }, 2] },
-  { $bounds: { criteres: { min: 2, max: 3 } } },
-); // { value: true, boundedReads: ['/$outputs/criteres'] }
+  { '>=': [{ var: '$outputs.criteria' }, 2] },
+  { $bounds: { criteria: { min: 2, max: 3 } } },
+); // { value: true, boundedReads: ['/$outputs/criteria'] }
 ```
 
-`boundedReads` is present only for bounds used to decide the returned boolean,
-with sorted, unique context pointers. It is absent for an unknown result and for
-bounds discarded by a decisive `and`/`or` term. The standalone `TruthResult` and
-`TruthValue` types are exported here; core integration is deferred to Task 12A.
+`boundedReads` lists only bounds that contributed to the returned boolean, sorted
+by spec pointer order without duplicates. Unknown results omit it. `evaluate`
+returns a boolean and maps unknown to false. Its historical boundary conversions
+retain `false` for literal `undefined`/`NaN` and `true` for a literal empty array;
+inside expressions empty arrays follow JSONLogic truth semantics.
 
-### Unpublished spec dependency and local checks
+Every call validates and snapshots the complete expression before execution.
+Contexts must be JSON objects. Cycles, holes, accessors, symbols, non-enumerable
+properties and non-plain objects are refused; getters are never run. Shared
+objects are snapshotted once and charged at every expanded reference. A one-key
+object is an operator; zero-key or multi-key literal objects remain data. Unknown
+operators, malformed arguments and invalid read paths are refused even in an
+unchosen branch. Results cannot contain `undefined`, `NaN` or infinity.
 
-This development branch directly requires `@run-iq/spec` `^1.0.0-next.1` for its
-comparison API. **That version is not published yet.** The core peer range remains
-unchanged. The locked spec `next.0` is retained only for old core's transitive
-installation; it cannot provide the new evaluator's comparison API. The committed
-development manifest therefore needs the branch substitution below until the new
-spec is published. No fallback to the old spec is supported.
+Frozen `capabilities` has exactly `exactDecimals: true`, `threeValued: true` and a
+frozen `limits` object. The limits default to `maxNodes: 100000`, `maxDepth: 50`
+and `maxSteps: 100000`; every value is a positive safe integer. Nodes include every
+JSON value in the expanded expression, context or intermediate/result tree,
+including repeated shared subtrees. A step is an expression visit, property
+traversal, missing-key inspection, branch-value comparison, or a value visited
+during intermediate validation (plus each text code unit). Exceeding a node/work
+budget throws `LIMIT_EXCEEDED`; depth overflow throws the appropriate input/result
+error. There is no truncation.
 
-For PRs into `refonte/*`, CI follows core's pattern on both Node 20 and 24: require
-the matching spec branch, check it out, build it, remove the unpublished direct
-spec from the runner's install manifests only, install the remaining locked tree,
-then replace old core's transitive spec with a link to the built branch. Phase-2
-pushes and manual checks also use the spec branch. No repository manifest is
-committed by these runner steps. A missing branch, failed build or absent export
-fails CI.
+Errors are `JsonLogicError` with a named `code`: `INVALID_EXPRESSION`,
+`INVALID_CONTEXT`, `INVALID_BOUNDS`, `NON_JSON_RESULT`, `EVALUATION_FAILED`,
+`MISSING_FACT`, `INCOMPARABLE` or `LIMIT_EXCEEDED`. The JSON and truth types are
+exported with the evaluator.
 
-Replay that setup locally in an isolated copy, using a read-only export of spec's
-`origin/refonte/phase-2`. Do not edit the other lane's spec checkout. After the
-linked installation, `npm run ci:local` runs typecheck (source and tests), lint,
-formatting, all tests and build. Use the lockfile's formatter. This repository has
-no heavy suite. Runtime publication and the new core integration belong to later
-jobs.
+## Development
+
+The direct dependency `@run-iq/spec` `^1.0.0-next.1` is not published yet. Local
+checks need a built `refonte/phase-2` spec linked in place of the locked `next.0`,
+which remains solely for the unchanged core peer's transitive installation.
+There is no fallback to that old API. Follow the install/build/link procedure in
+[CLAUDE.md](CLAUDE.md), then run `npm run ci:local` with Node 20.
+
+## License
+
+MIT

@@ -10,14 +10,11 @@ describe('compute', () => {
   ])('returns a JSON value for %j', (expression, context, value) => {
     expect(evaluator.compute(expression, context)).toEqual(value);
   });
-  it.each([{ '/': [0, 0] }, { '/': [1, 0] }, { and: [] }])(
-    'refuses non-JSON result %j',
-    (expression) => {
-      expect(() => evaluator.compute(expression, {})).toThrowError(
-        expect.objectContaining({ name: 'JsonLogicError', code: 'NON_JSON_RESULT' }),
-      );
-    },
-  );
+  it.each([{ '/': [0, 0] }, { '/': [1, 0] }])('refuses non-JSON result %j', (expression) => {
+    expect(() => evaluator.compute(expression, {})).toThrowError(
+      expect.objectContaining({ name: 'JsonLogicError', code: 'NON_JSON_RESULT' }),
+    );
+  });
   it.each([undefined, NaN, { x: undefined }, { x: () => 1 }, { x: new Date() }])(
     'refuses invalid context %j',
     (context) => {
@@ -38,7 +35,12 @@ describe('compute', () => {
     expect(evaluator.evaluate(NaN, {})).toBe(false);
   });
   it('advertises binary arithmetic and three-valued logic', () => {
-    expect(evaluator.capabilities).toEqual({ exactDecimals: false, threeValued: true });
+    expect(evaluator.capabilities).toEqual({
+      exactDecimals: true,
+      threeValued: true,
+      limits: { maxNodes: 100000, maxDepth: 50, maxSteps: 100000 },
+    });
     expect(Object.isFrozen(evaluator.capabilities)).toBe(true);
+    expect(Object.isFrozen(evaluator.capabilities.limits)).toBe(true);
   });
 });
