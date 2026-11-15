@@ -99,10 +99,10 @@ what you pushed and what you expect from the machine session.
 Use Node 20 for the complete local CI replay, and Node 20 and 24 in CI:
 
 ```sh
-npm ci
+# First perform the branch build/install/link setup below (next.1 is unpublished).
 npm run typecheck
 npm run lint
-npm exec --no -- prettier --check CLAUDE.md .github/workflows/ci.yml
+npm exec --no -- prettier --check CLAUDE.md README.md .github/workflows/ci.yml
 npm test
 npm run build
 ```
@@ -118,12 +118,61 @@ Task 12 works standalone on `JsonLogicEvaluator`: `listVariables`, `compute`,
 not add core integration tests. Task 12A handles integration after core's 9M1.
 The full binding job and addenda are in the lane C job comment on #1.
 
+### Unpublished spec setup
+
+The direct `@run-iq/spec` range is `^1.0.0-next.1`, which is not published yet.
+The locked `next.0` remains solely for old core's unchanged peer installation.
+On both Node 20 and 24, CI requires the matching spec refonte branch, checks it
+out and builds it, removes the unpublished direct dependency from the runner's
+manifest and lock root only, performs `npm ci`, replaces the installed old spec
+with a link to the built branch, then restores the committed manifests before
+checks. A missing branch, build or export fails; no fallback is allowed.
+Replay this in an isolated repository copy using a read-only export of spec's
+`origin/refonte/phase-2`, built in this repository's private scratch directory.
+Never edit another lane's checkout. `npm run ci:local` covers typecheck, lint,
+locked Prettier, all tests and build. There is currently no heavy suite.
+
+### Task 12 audit rulings, 15 November 2026
+
+[Round 1 rulings](https://github.com/Run-IQ/dsl-jsonlogic/pull/2#issuecomment-6889017086)
+supersede keeping native JSONLogic comparisons: `evaluate`, `compute` and
+`evaluateTruth` share operators/comparisons. Ordering accepts numbers or canonical
+decimal strings only, using spec's ordering; other pairs fail `INCOMPARABLE`.
+Equality is exact for two decimals and strict otherwise, without coercion.
+Spec orders numbers numerically and its decimal helper expands their shortest
+spelling, not the full binary fraction. Empty `and`/`or` fail by name.
+`compute` refuses absent nondefaulted own reads with `MISSING_FACT`, including
+iterator indices. A pending output has bounds but no value: defaults do not
+apply, missing checks are unknown, and only an answer invariant across all
+admissible values may be definite. Validate reserved context shapes and present
+output consistency up front. Use spec pointer formatting/order, refusing `-`
+segments and lone surrogates. Declare and enforce expression-node, depth,
+evaluation-step and value-node limits. Every safety fix needs a RED regression
+and mutation; the PR's Fail-closed claims must match the final code.
+
+The [Task 12 capability addendum](https://github.com/Run-IQ/.github/issues/1#issuecomment-6889501583)
+aligns the standalone evaluator with core's 9M1 spec. `capabilities` has exactly
+`exactDecimals`, `threeValued` and `limits`; exact comparison makes
+`exactDecimals` true. The frozen `limits` object contains positive safe-integer
+defaults `maxNodes`, `maxDepth` and `maxSteps`.
+
 ## 5. Owner decisions
 
 The founding principle and the ten-point checklist above are owner decisions of
 2 November 2026. Historical decisions are retained with their scope; they do not
 authorize work in another lane's repository or an early implementation of a later
 task.
+
+### DECISION: normative task specs and small PRs, 15 November 2026
+
+[Machine session: DECISION (all lanes)](https://github.com/Run-IQ/.github/issues/1#issuecomment-6889308676).
+Before each future task, the machine session posts a normative
+`docs/cloud/spec-<task>.md` whose numbered requirements each name their RED test
+and mutation. A gap or contradiction requires a machine ruling rather than a
+silent choice. Each task is split as its job directs into green, separately
+audited sub-PRs of about 800 diff lines or fewer. Zero findings, RED first, a
+mutation for each safety rule and a Fail-closed section remain mandatory. Lanes
+stay busy and never share a repository; a free lane takes the next unblocked job.
 
 ### Earlier decisions recorded by the machine session
 
@@ -194,13 +243,23 @@ Lane A finishes 9L (core#5) through audit OK and merge, then only the small core
 follow-up to spec#4 (`job-core-followup-9k5`) so core CI stays green. Lane B finishes
 9K5 (spec#4), merging only when the machine session says so after 9L. Both then take
 no new job, keep their watch armed and wait for a machine comment to resume.
+This pause was lifted on 15 November 2026 by the resume decision below.
 This decision names lanes A and B. Lane C's later job 1 is explicitly assigned on
 15 November 2026.
 
 The [later audit pause](https://github.com/Run-IQ/.github/issues/1#issuecomment-6595478710)
-says the machine session pauses audits until the owner resumes them. Current
-fixes may be finished and pushed with a status post, then wait; no merge precedes
-audit. The lane C assignment does not substitute for an audit OK.
+paused machine audits until the owner resumed them. This audit pause was lifted
+on 15 November 2026 by the resume decision below. An explicit audit OK is still
+required before every merge.
+
+### DECISION: loop resumed and lane C joins, 15 November 2026
+
+[Machine session: DECISION (all lanes)](https://github.com/Run-IQ/.github/issues/1#issuecomment-6888518491).
+The owner resumed the loop. ChatGPT/Codex joins as lane C for standalone Task 12
+in `dsl-jsonlogic`. Audits resume and the pauses of 3 November are lifted. The
+remaining merge order still holds: 9L, then spec#4, then lane A's core follow-up;
+then the machine session posts the next jobs. Lanes A and B reread their repo's
+`CLAUDE.md` and their PR if restarted, and receive their audits on their PRs.
 
 ## 6. Future decisions
 

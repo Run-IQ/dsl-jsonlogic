@@ -7,8 +7,18 @@ jsonLogic.rm_operation('log');
 
 import type { DSLEvaluator, DSLSyntaxDoc } from '@run-iq/core';
 import { VERSION } from './version.js';
-
-const MAX_EXPRESSION_DEPTH = 50;
+import {
+  prepareExpression,
+  prepareContext,
+  requiredVariables,
+  MAX_EXPRESSION_DEPTH,
+  MAX_EXPRESSION_NODES,
+  MAX_EVALUATION_STEPS,
+  MAX_VALUE_NODES,
+} from './expression.js';
+import type { JsonValue } from './expression.js';
+import { truthResult, computeResult } from './truth.js';
+import type { TruthResult } from './truth.js';
 
 /**
  * Recursively compute the depth of a JSONLogic expression tree.
@@ -42,6 +52,27 @@ export function getDepth(expr: unknown): number {
 export class JsonLogicEvaluator implements DSLEvaluator {
   readonly dsl = 'jsonlogic' as const;
   readonly version = VERSION;
+  readonly capabilities = Object.freeze({
+    exactDecimals: true,
+    threeValued: true,
+    limits: Object.freeze({
+      maxNodes: Math.min(MAX_EXPRESSION_NODES, MAX_VALUE_NODES),
+      maxDepth: MAX_EXPRESSION_DEPTH,
+      maxSteps: MAX_EVALUATION_STEPS,
+    }),
+  });
+
+  listVariables(expression: unknown): string[] {
+    return requiredVariables(prepareExpression(expression));
+  }
+
+  compute(expression: unknown, context: Record<string, unknown>): JsonValue {
+    return computeResult(prepareExpression(expression), prepareContext(context));
+  }
+
+  evaluateTruth(expression: unknown, context: Record<string, unknown>): TruthResult {
+    return truthResult(prepareExpression(expression), prepareContext(context));
+  }
 
   describeSyntax(): DSLSyntaxDoc {
     return {
@@ -94,19 +125,12 @@ export class JsonLogicEvaluator implements DSLEvaluator {
   }
 
   evaluate(expression: unknown, context: Record<string, unknown>): boolean {
-    const depth = getDepth(expression);
-    if (depth > MAX_EXPRESSION_DEPTH) {
-      throw new Error(
-        `JSONLogic expression exceeds maximum depth of ${String(MAX_EXPRESSION_DEPTH)} (got ${String(depth)})`,
-      );
-    }
-
-    try {
-      return Boolean(jsonLogic.apply(expression, context));
-    } catch (error) {
-      throw new Error(
-        `JSONLogic evaluation failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    // Retain the historical falsy primitive and empty-array conversion at this two-valued boundary.
+    if (expression === undefined || (typeof expression === 'number' && Number.isNaN(expression)))
+      return false;
+    const checked = prepareExpression(expression);
+    const data = prepareContext(context);
+    if (Array.isArray(checked) && checked.length === 0) return true;
+    return truthResult(checked, data).value === true;
   }
 }

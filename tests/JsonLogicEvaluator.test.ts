@@ -56,7 +56,9 @@ describe('JsonLogicEvaluator', () => {
   });
 
   it('throws on invalid operator', () => {
-    expect(() => evaluator.evaluate({ foobar: [1] }, {})).toThrow(/evaluation failed/);
+    expect(() => evaluator.evaluate({ foobar: [1] }, {})).toThrowError(
+      expect.objectContaining({ code: 'INVALID_EXPRESSION' }),
+    );
   });
 
   it('determinism: same expression x3 = same result', () => {
